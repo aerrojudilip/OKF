@@ -42,11 +42,37 @@ public final class BundleConverter {
             else supported.add(file);
         }
         if (supported.isEmpty()) throw new IOException("No supported input files found");
+        Map<Path, String> sourceStamps = new LinkedHashMap<>();
+        if (options != null) for (Path source : supported) sourceStamps.put(source, UpdateManifest.sourceStamp(source));
         Files.createDirectories(output.getParent());
         Path stage = Files.createTempDirectory(output.getParent(), ".okf-staging-");
         try {
             int sectionCount = 0;
             for (Path source : supported) {
+                sectionCount += writeSource(source, root, stage);
+            }
+            if (options != null && options.splittingEnabled()) writeRetrievalGuide(stage);
+            createIndex(stage);
+            var errors = new OkfValidator().validate(stage);
+            if (!errors.isEmpty()) throw new IOException("Generated bundle failed validation: " + errors);
+            if (options != null) {
+                for (Path source : supported) if (!sourceStamps.get(source).equals(UpdateManifest.sourceStamp(source)))
+                    throw new IOException("Source changed while converting; retry: " + source);
+                UpdateManifest.capture(input, root, supported, stage, options).save(stage);
+            }
+            // No REPLACE_EXISTING: even a destination created during conversion is protected.
+            Files.move(stage, output);
+            return new Result(supported.size(), List.copyOf(skipped), sectionCount);
+        } finally {
+            if (Files.exists(stage, NOFOLLOW_LINKS)) {
+                try (var walk = Files.walk(stage)) {
+                    for (Path path : walk.sorted(Comparator.reverseOrder()).toList()) Files.delete(path);
+                }
+            }
+        }
+    }
+
+    int writeSource(Path source, Path root, Path stage) throws Exception {
                 Path relative = root.relativize(source);
                 Path destination = stage.resolve(relative.toString() + ".md");
                 Files.createDirectories(destination.getParent());
@@ -77,31 +103,16 @@ public final class BundleConverter {
                         if (DocumentExtractor.extension(source).equals("txt")) body = Files.readString(source);
                         sections = SectionSplitter.markdown(body, title, options.sectionTargetChars());
                     }
-                    sectionCount += SectionBundle.write(stage, stage.resolve(relative + ".sections"), sections, metadata);
+                    return SectionBundle.write(stage, stage.resolve(relative + ".sections"), sections, metadata);
                 } else {
                     String attributed = content.body().strip() + "\n\nConverted from the source document." + SourceAttribution.reference(metadata)
                             + "\n\n" + SourceAttribution.definition(metadata, 0);
                     Files.writeString(destination, Frontmatter.write(metadata, attributed), StandardOpenOption.CREATE_NEW);
-                    sectionCount++;
+                    return 1;
                 }
-            }
-            if (options != null && options.splittingEnabled()) writeRetrievalGuide(stage);
-            createIndex(stage);
-            var errors = new OkfValidator().validate(stage);
-            if (!errors.isEmpty()) throw new IOException("Generated bundle failed validation: " + errors);
-            // No REPLACE_EXISTING: even a destination created during conversion is protected.
-            Files.move(stage, output);
-            return new Result(supported.size(), List.copyOf(skipped), sectionCount);
-        } finally {
-            if (Files.exists(stage, NOFOLLOW_LINKS)) {
-                try (var walk = Files.walk(stage)) {
-                    for (Path path : walk.sorted(Comparator.reverseOrder()).toList()) Files.delete(path);
-                }
-            }
-        }
     }
 
-    private static void createIndex(Path root) throws Exception {
+    static void createIndex(Path root) throws Exception {
         List<Path> documents;
         try (var walk = Files.walk(root)) {
             documents = walk.filter(p -> Files.isRegularFile(p, NOFOLLOW_LINKS) && p.toString().endsWith(".md")).sorted().toList();
@@ -139,7 +150,7 @@ public final class BundleConverter {
         }
         Files.writeString(root.resolve("index.md"), Frontmatter.write(Map.of("okf_version", "0.2"), body.toString()), StandardOpenOption.CREATE_NEW);
     }
-    private static void writeRetrievalGuide(Path root) throws Exception {
+    static void writeRetrievalGuide(Path root) throws Exception {
         String body = """
                 # Answer questions from this bundle
 
@@ -167,4 +178,3 @@ public final class BundleConverter {
                 .replaceAll("[\\r\\n]", " ");
     }
 }
-

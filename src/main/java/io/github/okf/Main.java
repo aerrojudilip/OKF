@@ -7,12 +7,39 @@ import picocli.CommandLine.*;
 
 @Command(name = "okf", mixinStandardHelpOptions = true, version = "okf-converter 1.0.0",
         description = "Convert local documents into an Open Knowledge Format v0.2 bundle.",
-        subcommands = {Main.Convert.class, Main.Validate.class, Main.Search.class})
+        subcommands = {Main.Convert.class, Main.Update.class, Main.Validate.class, Main.Search.class})
 public final class Main {
-    public static void main(String[] args) { System.exit(new CommandLine(new Main()).execute(args)); }
+    public static void main(String[] args) { System.exit(commandLine().execute(args)); }
+
+    static CommandLine commandLine() {
+        return new CommandLine(new Main()).setExecutionExceptionHandler((error, command, parsed) -> {
+            command.getErr().println("Error: " + error.getMessage());
+            return 1;
+        });
+    }
+
+    private static void reportUpdate(CommandLine command, BundleUpdater.Result result) {
+        command.getOut().printf("Refreshed %d source(s), unchanged %d, removed %d.%n", result.refreshed(), result.unchanged(), result.removed());
+        if (result.initialized()) command.getOut().println("Initialized change tracking for this older bundle.");
+        if (result.backup() != null) command.getOut().println("Previous bundle retained at " + result.backup());
+    }
+
+    @Command(name = "update", mixinStandardHelpOptions = true, description = "Refresh changed sources in an existing bundle and rebuild its single catalog.")
+    static final class Update implements Callable<Integer> {
+        @Parameters(index = "0") Path input;
+        @Option(names = {"-o", "--output"}, required = true) Path output;
+        @Option(names = "--config") Path config;
+        @Spec Model.CommandSpec spec;
+        public Integer call() throws Exception {
+            Path settings = config != null ? config : (java.nio.file.Files.exists(Path.of("converter.properties")) ? Path.of("converter.properties") : null);
+            var result = new BundleUpdater(ConverterOptions.load(settings)).update(input, output);
+            reportUpdate(spec.commandLine(), result);
+            return 0;
+        }
+    }
 
     @Command(name = "convert", mixinStandardHelpOptions = true,
-            description = "Convert a file or recursively convert a folder. Output must not exist.")
+            description = "Create a bundle, or incrementally update it when the output already exists.")
     static final class Convert implements Callable<Integer> {
         @Parameters(index = "0", description = "Source file or folder") Path input;
         @Option(names = {"-o", "--output"}, required = true) Path output;
@@ -23,6 +50,10 @@ public final class Main {
         public Integer call() throws Exception {
             Path settings = config != null ? config : (java.nio.file.Files.exists(Path.of("converter.properties")) ? Path.of("converter.properties") : null);
             var options = ConverterOptions.load(settings).withLimits(maxBytes, maxChars);
+            if (java.nio.file.Files.exists(output, java.nio.file.LinkOption.NOFOLLOW_LINKS)) {
+                reportUpdate(spec.commandLine(), new BundleUpdater(options).update(input, output));
+                return 0;
+            }
             var result = new BundleConverter(options).convert(input, output);
             result.skipped().forEach(p -> spec.commandLine().getErr().println("Skipped unsupported file or symbolic link: " + p));
             spec.commandLine().getOut().printf("Converted %d file(s) into %d content section(s) at %s%n", result.converted(), result.sections(), output.toAbsolutePath());

@@ -23,9 +23,31 @@ java -jar target/okf-converter.jar convert "C:/Documents/report.pdf" -o output/r
 java -jar target/okf-converter.jar convert "C:/Documents/knowledge" -o output/knowledge
 ```
 
-The output folder **must not already exist**. Choose a fresh folder for each run. Supported files are converted recursively; unsupported files and symbolic links are reported as skipped. A corrupt supported document fails the run. The output is published only after all conversions and structural validation succeed; temporary files are cleaned up on ordinary failures. Forced process termination may leave a `.okf-staging-*` folder.
+`convert` creates a new bundle when the output does not exist. If the bundle already exists, the same command automatically uses the incremental update flow: unchanged documents are retained and changed sources are refreshed, with a backup before publication. CLI limit overrides apply to both paths. Supported files are converted recursively; unsupported files and symbolic links are reported as skipped on initial conversion. A corrupt supported document fails the run. Temporary files are cleaned up on ordinary failures. Forced process termination may leave a staging folder. Routine CLI failures display a concise error and return exit code 1.
 
-Exit codes: `0` success, `1` conversion/validation failure, `2` invalid command arguments. Successful directory conversions may include reported skips; review stderr if completeness matters.
+Exit codes: `0` success, `1` conversion/validation/update failure, `2` invalid command arguments. Successful directory conversions may include reported skips; review stderr if completeness matters.
+
+## Refresh Markdown when source files change
+
+Rerun your original `convert` command, or explicitly run `update` against the same source and existing bundle:
+
+```shell
+java -jar target/okf-converter.jar update documents -o output/new-bundle --config converter.properties
+```
+
+New conversions made with property settings save `.okf-converter.properties` inside the bundle. This internal file records source content hashes, modification times, effective settings, conversion-code fingerprints, and generated output hashes. It is not a Markdown concept or a database.
+
+* Added or changed sources regenerate their sections. Unchanged source sections retain their content and modification times.
+* Deleted sources remove only their tracked generated files, and the single root index is rebuilt.
+* Missing generated sections are rebuilt. Settings or conversion-code changes trigger a full source refresh.
+* If nothing changed, the command leaves the bundle untouched.
+* Older bundles without tracking data receive one full refresh and then support incremental updates. Their previous contents are retained in a backup.
+
+Updates validate a staged copy before replacing the live directory. The prior bundle is retained alongside it as `<bundle>.backup-<unique-id>`; the command prints the backup path. No-op runs create no backup. A failed conversion leaves the current bundle intact. Publication uses a directory swap with rollback on ordinary failures; a forced crash between renames may require restoring the sibling backup manually.
+
+Untracked files are copied forward. Changes to tracked generated files are detected and stop the update so handwritten edits are not silently lost. Keep handwritten knowledge in separate Markdown files with OKF frontmatter. On the first refresh of an older bundle, manual changes cannot be distinguished from generated text; the backup preserves them. Source and output must be separate trees. Symlinks inside an updated bundle are rejected. A sibling lock prevents two `update` commands from running together; avoid editing the bundle during publication.
+
+This is an on-demand command: rerun it after changing files or rebuilding converter code. It does not start a background watcher. Changes to external OCR binaries or language data are not fingerprinted; after those changes, produce a fresh bundle with `convert`.
 
 ## Supported formats
 
