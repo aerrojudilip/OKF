@@ -1,12 +1,12 @@
 # Java OKF Markdown Converter
 
-A Java 25 / Maven CLI and reusable conversion API for turning local files into an **Open Knowledge Format (OKF) v0.2** bundle. Based on the [Google Cloud specification](https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md), checked on September 12, 2026. This is an independent implementation, not a Google-certified product.
+A Java 21 / Maven CLI and reusable conversion API for turning local files into an **Open Knowledge Format (OKF) v0.2** bundle. Based on the [Google Cloud specification](https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md), checked on September 12, 2026. This is an independent implementation, not a Google-certified product.
 
 By default, documents become **multiple topic-oriented Markdown files** for retrieval by an LLM. PDFs use bookmarks and page destinations; Markdown and structured documents use headings. One root catalog, source citations, adjacent-section links, and local lexical search let an agent retrieve evidence without a vector database.
 
 ## Build and run
 
-Install JDK 25 and Maven 3.9+. The first build needs internet access to download dependencies.
+Install JDK 21 and Maven 3.9+. The first build needs internet access to download dependencies.
 
 ```shell
 mvn clean verify

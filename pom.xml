@@ -4,7 +4,7 @@
   <groupId>io.github.okf</groupId><artifactId>okf-converter</artifactId><version>1.0.0</version>
   <name>OKF Markdown Converter</name>
   <properties>
-    <maven.compiler.release>25</maven.compiler.release><project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    <maven.compiler.release>21</maven.compiler.release><project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     <tika.version>3.3.2</tika.version>
   </properties>
   <dependencies>
